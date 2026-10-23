@@ -1,8 +1,10 @@
 """Small SQLite persistence layer. Secrets are intentionally not stored here."""
 from __future__ import annotations
 
-import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+import sqlite3
+from typing import Iterator
 from platformdirs import user_data_path
 
 
@@ -16,11 +18,20 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
-    def connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def connect(self) -> Iterator[sqlite3.Connection]:
+        """Yield a short-lived connection and always close it."""
         db = sqlite3.connect(self.path)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
-        return db
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def _init_db(self) -> None:
         with self.connect() as db:
@@ -74,10 +85,13 @@ class Store:
             )
 
     def add_contact(self, name: str, community: str = "local", handle: str = "", notes: str = "") -> int:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("contact name cannot be empty")
         with self.connect() as db:
             cur = db.execute(
                 "INSERT INTO contacts(name, community, handle, notes) VALUES (?, ?, ?, ?)",
-                (name.strip(), community.strip(), handle.strip(), notes.strip()),
+                (clean_name, community.strip() or "local", handle.strip(), notes.strip()),
             )
             return int(cur.lastrowid)
 
@@ -110,6 +124,8 @@ class Store:
     def add_message(self, conversation_id: int, direction: str, body: str, status: str = "saved") -> int:
         if direction not in {"inbound", "outbound", "note"}:
             raise ValueError("direction must be inbound, outbound, or note")
+        if not body.strip():
+            raise ValueError("message body cannot be empty")
         with self.connect() as db:
             cur = db.execute(
                 "INSERT INTO messages(conversation_id, direction, body, status) VALUES (?, ?, ?, ?)",
@@ -120,10 +136,12 @@ class Store:
 
     def save_draft(self, body: str, recipient: str = "", community: str = "local",
                    conversation_id: int | None = None) -> int:
+        if not body.strip():
+            raise ValueError("draft body cannot be empty")
         with self.connect() as db:
             cur = db.execute(
                 "INSERT INTO drafts(conversation_id, recipient, community, body) VALUES (?, ?, ?, ?)",
-                (conversation_id, recipient, community, body),
+                (conversation_id, recipient.strip(), community.strip() or "local", body),
             )
             return int(cur.lastrowid)
 
@@ -137,7 +155,9 @@ class Store:
 
     def set_community_account(self, name: str, account_name: str, notes: str = "") -> None:
         with self.connect() as db:
-            db.execute(
+            result = db.execute(
                 "UPDATE communities SET account_name=?, notes=? WHERE name=?",
                 (account_name.strip(), notes.strip(), name),
             )
+            if result.rowcount == 0:
+                raise ValueError(f"unknown community: {name}")
