@@ -1,8 +1,7 @@
-from swarmbridge.store import Store
-
 import pytest
 
 from swarmbridge.mediator import DEFAULT_INSTRUCTIONS, GrokMediator, load_instructions
+from swarmbridge.store import Store
 
 
 def test_store_persists_contacts_conversations_messages_and_drafts(tmp_path):
