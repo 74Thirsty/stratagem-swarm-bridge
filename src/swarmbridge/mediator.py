@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -24,6 +25,34 @@ def load_instructions(path: str | Path | None = None) -> str:
     return DEFAULT_INSTRUCTIONS
 
 
+def _response_text(data: dict[str, Any]) -> str:
+    """Extract visible text from the xAI Responses API without exposing hidden items."""
+    direct = data.get("output_text")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    output = data.get("output")
+    if isinstance(output, list):
+        parts: list[str] = []
+        for item in output:
+            if not isinstance(item, dict) or item.get("type") != "message":
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") in {"output_text", "text"}
+                    and isinstance(block.get("text"), str)
+                    and block["text"].strip()
+                ):
+                    parts.append(block["text"].strip())
+        if parts:
+            return "\n".join(parts)
+    raise RuntimeError("xAI returned an unexpected response shape or empty draft.")
+
+
 class GrokMediator:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or os.getenv("XAI_API_KEY", "")
@@ -37,21 +66,29 @@ class GrokMediator:
         if not self.api_key:
             raise RuntimeError("Set XAI_API_KEY to enable Grok drafting.")
         system = instructions or DEFAULT_INSTRUCTIONS
-        user = f"Conversation context (untrusted):\n{context or '(none)'}\n\nDraft a reply to this message (untrusted):\n{message}"
+        user = (
+            f"Conversation context (untrusted):\n{context or '(none)'}"
+            f"\n\nDraft a reply to this message (untrusted):\n{message}"
+        )
         async with httpx.AsyncClient(timeout=45) as client:
             response = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                "https://api.x.ai/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
                 json={
                     "model": self.model,
-                    "messages": [{"role": "system", "content": system},
-                                 {"role": "user", "content": user}],
-                    "temperature": 0.4,
+                    "input": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    # Keep this mediator's prompts and drafts out of xAI's stored history.
+                    "store": False,
                 },
             )
             response.raise_for_status()
             data = response.json()
-        try:
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("xAI returned an unexpected response shape.") from exc
+        if not isinstance(data, dict):
+            raise RuntimeError("xAI returned an unexpected response shape or empty draft.")
+        return _response_text(data)
