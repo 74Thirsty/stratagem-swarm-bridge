@@ -19,9 +19,10 @@ async def test_app_mounts_and_contact_can_be_added(tmp_path):
         app.query_one("#contact-handle", Input).value = "@north"
         await pilot.click("#add-contact")
         assert store.contacts()[0]["name"] == "Agent North"
-        assert app.query_one("#workspace").current == "inbox-pane"
-        await pilot.click("#nav-contacts")
         assert app.query_one("#workspace").current == "contacts-pane"
+        assert app.query_one("#contact-name", Input).value == ""
+        await pilot.click("#nav-inbox")
+        assert app.query_one("#workspace").current == "inbox-pane"
 
 
 @pytest.mark.asyncio
