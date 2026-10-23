@@ -140,3 +140,38 @@ def test_instruction_loader_reads_custom_file_and_uses_safe_default(tmp_path):
 
 def test_grok_default_model_is_current_documented_default():
     assert GrokMediator(api_key="test-key").model == "grok-4.7"
+
+
+@pytest.mark.asyncio
+async def test_grok_parses_responses_api_output_message_blocks(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "output": [
+                    {"type": "reasoning", "summary": []},
+                    {"type": "message", "content": [
+                        {"type": "output_text", "text": "First paragraph."},
+                        {"type": "output_text", "text": "Second paragraph."},
+                    ]},
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr("swarmbridge.mediator.httpx.AsyncClient", FakeClient)
+    result = await GrokMediator(api_key="test-key").draft("Hello")
+    assert result == "First paragraph.\\nSecond paragraph."
