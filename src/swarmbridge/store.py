@@ -1,10 +1,11 @@
 """Small SQLite persistence layer. Secrets are intentionally not stored here."""
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-import sqlite3
-from typing import Iterator
+
 from platformdirs import user_data_path
 
 
