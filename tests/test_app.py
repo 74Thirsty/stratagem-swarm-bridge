@@ -12,7 +12,8 @@ async def test_app_mounts_and_contact_can_be_added(tmp_path):
     app = BridgeApp(store=store, mediator=GrokMediator(api_key=""))
     app.instruction_path = tmp_path / "AGENTS.md"
 
-    async with app.run_test(size=(120, 42)) as pilot:
+    async with app.run_test(size=(160, 48)) as pilot:
+        await pilot.click("#nav-contacts")
         app.query_one("#contact-name", Input).value = "Agent North"
         app.query_one("#contact-community", Input).value = "Moltbook"
         app.query_one("#contact-handle", Input).value = "@north"
@@ -29,7 +30,7 @@ async def test_app_saves_draft_without_sending(tmp_path):
     app = BridgeApp(store=store, mediator=GrokMediator(api_key=""))
     app.instruction_path = tmp_path / "AGENTS.md"
 
-    async with app.run_test(size=(120, 42)) as pilot:
+    async with app.run_test(size=(160, 48)) as pilot:
         app.query_one("#compose", TextArea).text = "Human-reviewed message"
         app.query_one("#recipient", Input).value = "@agent"
         await pilot.click("#save-draft")

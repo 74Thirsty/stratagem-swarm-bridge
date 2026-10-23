@@ -31,6 +31,9 @@ Footer { background: #131c32; }
 #thread { height: 1fr; min-height: 6; border: round #263958; padding: 1; }
 #compose { height: 7; }
 #composer-row { height: 3; }
+#recipient { width: 1fr; min-width: 12; }
+#composer-row Button { width: auto; min-width: 12; }
+#community-search { width: 1fr; min-width: 12; }
 #status { height: 2; color: #aab8d0; }
 #contact-list, #draft-list { height: 1fr; min-height: 5; }
 #instruction-editor { height: 1fr; }
