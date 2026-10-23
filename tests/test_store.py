@@ -174,7 +174,7 @@ async def test_grok_parses_responses_api_output_message_blocks(monkeypatch):
 
     monkeypatch.setattr("swarmbridge.mediator.httpx.AsyncClient", FakeClient)
     result = await GrokMediator(api_key="test-key").draft("Hello")
-    assert result == "First paragraph.\\nSecond paragraph."
+    assert result == "First paragraph.\nSecond paragraph."
 
 
 @pytest.mark.asyncio
