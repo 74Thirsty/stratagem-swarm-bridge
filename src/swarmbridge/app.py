@@ -130,7 +130,7 @@ class BridgeApp(App):
                 yield Label("CONVERSATIONS", classes="section-title")
                 yield Button("＋  New conversation", id="new-thread")
                 yield ListView(id="thread-list")
-                yield Static("● OUTBOUND LOCKED", id="lock-label")
+                yield Static("● HUMAN APPROVAL REQUIRED", id="lock-label")
             with Vertical(id="main"):
                 with ContentSwitcher(initial="inbox-pane", id="workspace"):
                     with Vertical(id="inbox-pane"):
@@ -138,7 +138,7 @@ class BridgeApp(App):
                         with VerticalScroll(id="thread"):
                             yield Static(
                                 "Select a conversation or create a new one.\n\n"
-                                "External communication is locked. This build only saves drafts.",
+                                "Public posts and comments require your explicit confirmation. Direct messages remain disabled.",
                                 id="thread-content",
                                 markup=False,
                             )
@@ -149,7 +149,7 @@ class BridgeApp(App):
                             yield Button("Draft with Grok", id="grok", classes="primary")
                             yield Button("Save draft", id="save-draft")
                         yield Static(
-                            "READY  •  outbound locked  •  " +
+                            "READY  •  human approval required  •  " +
                             ("Grok configured" if self.mediator.configured else "Grok not configured"),
                             id="status",
                         )
@@ -529,7 +529,7 @@ class BridgeApp(App):
             self.notify(str(exc), title="GROK DRAFT FAILED", severity="error", timeout=8)
         finally:
             self.query_one("#status", Static).update(
-                "READY  •  outbound locked  •  " +
+                "READY  •  human approval required  •  " +
                 ("Grok configured" if self.mediator.configured else "Grok not configured")
             )
 
