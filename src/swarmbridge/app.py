@@ -2,17 +2,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (
-    Button, ContentSwitcher, Footer, Header, Input, Label, ListItem, ListView,
-    Static, TextArea,
+    Button,
+    ContentSwitcher,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Static,
+    TextArea,
 )
 
 from swarmbridge.communities import MoltbookAdapter
 from swarmbridge.mediator import GrokMediator, load_instructions
-from swarmbridge.moltbook import MoltbookClient, MoltbookError, load_api_key, save_api_key
+from swarmbridge.moltbook import (\n    MoltbookClient,\n    MoltbookError,\n    load_api_key,\n    save_api_key,\n)
 from swarmbridge.store import Store
 
 
