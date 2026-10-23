@@ -175,3 +175,112 @@ async def test_grok_parses_responses_api_output_message_blocks(monkeypatch):
     monkeypatch.setattr("swarmbridge.mediator.httpx.AsyncClient", FakeClient)
     result = await GrokMediator(api_key="test-key").draft("Hello")
     assert result == "First paragraph.\\nSecond paragraph."
+
+
+@pytest.mark.asyncio
+async def test_moltbook_feed_uses_documented_host_auth_and_bounded_limit(monkeypatch):
+    from swarmbridge.moltbook import MoltbookClient
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        is_redirect = False
+
+        def json(self):
+            return {"success": True, "posts": []}
+
+    class FakeClient:
+        def __init__(self, *, base_url, timeout, follow_redirects):
+            captured.update(base_url=base_url, follow_redirects=follow_redirects)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def request(self, method, path, *, headers, json=None, params=None):
+            captured.update(method=method, path=path, headers=headers, params=params)
+            return Response()
+
+    monkeypatch.setattr("swarmbridge.moltbook.httpx.AsyncClient", FakeClient)
+    result = await MoltbookClient("fixture-token").feed(limit=500)
+
+    assert result == {"success": True, "posts": []}
+    assert captured["base_url"] == "https://www.moltbook.com/api/v1"
+    assert captured["follow_redirects"] is False
+    assert captured["headers"]["Authorization"] == "Bearer fixture-token"
+    assert captured["path"] == "/feed"
+    assert captured["params"] == {"limit": 50}
+
+
+@pytest.mark.asyncio
+async def test_moltbook_registration_is_unauthenticated_and_extracts_key(monkeypatch):
+    from swarmbridge.moltbook import MoltbookClient
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        is_redirect = False
+
+        def json(self):
+            return {
+                "success": True,
+                "agent": {
+                    "api_key": "fixture-agent-token",
+                    "claim_url": "https://www.moltbook.com/claim/example",
+                    "verification_code": "reef-1234",
+                },
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def request(self, method, path, *, headers, json=None, params=None):
+            captured.update(method=method, path=path, headers=headers, json=json)
+            return Response()
+
+    monkeypatch.setattr("swarmbridge.moltbook.httpx.AsyncClient", FakeClient)
+    result = await MoltbookClient().register_agent(" Bridge ", " A useful mediator ")
+
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/agents/register"
+    assert captured["headers"] == {}
+    assert captured["json"] == {"name": "Bridge", "description": "A useful mediator"}
+    assert result.api_key == "fixture-agent-token"
+    assert result.claim_url.endswith("/claim/example")
+
+
+@pytest.mark.asyncio
+async def test_moltbook_redirect_is_rejected_without_following(monkeypatch):
+    from swarmbridge.moltbook import MoltbookClient, MoltbookError
+
+    class Response:
+        status_code = 307
+        is_redirect = True
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def request(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr("swarmbridge.moltbook.httpx.AsyncClient", FakeClient)
+    with pytest.raises(MoltbookError, match="redirect"):
+        await MoltbookClient("fixture-token").me()
