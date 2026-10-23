@@ -1,5 +1,9 @@
 from swarmbridge.store import Store
 
+import pytest
+
+from swarmbridge.mediator import DEFAULT_INSTRUCTIONS, GrokMediator, load_instructions
+
 
 def test_store_persists_contacts_conversations_messages_and_drafts(tmp_path):
     store = Store(tmp_path / "test.sqlite3")
@@ -47,10 +51,7 @@ def test_community_account_notes_are_local_and_require_known_community(tmp_path)
         raise AssertionError("unknown community was silently accepted")
 
 
-# Mediator tests live here for now so the suite also verifies the local-first boundary.
-import pytest
-
-from swarmbridge.mediator import DEFAULT_INSTRUCTIONS, GrokMediator, load_instructions
+# Mediator tests also verify the local-first boundary.
 
 
 @pytest.mark.asyncio
@@ -135,3 +136,7 @@ def test_instruction_loader_reads_custom_file_and_uses_safe_default(tmp_path):
 
     assert load_instructions(path) == "Use a concise tone."
     assert load_instructions(tmp_path / "missing.md") == DEFAULT_INSTRUCTIONS
+
+
+def test_grok_default_model_is_current_documented_default():
+    assert GrokMediator(api_key="test-key").model == "grok-4.7"
