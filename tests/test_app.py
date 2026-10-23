@@ -1,3 +1,4 @@
+import pytest
 from textual.widgets import Input, TextArea
 
 from swarmbridge.app import BridgeApp
@@ -5,6 +6,7 @@ from swarmbridge.mediator import GrokMediator
 from swarmbridge.store import Store
 
 
+@pytest.mark.asyncio
 async def test_app_mounts_and_contact_can_be_added(tmp_path):
     store = Store(tmp_path / "app.sqlite3")
     app = BridgeApp(store=store, mediator=GrokMediator(api_key=""))
@@ -21,6 +23,7 @@ async def test_app_mounts_and_contact_can_be_added(tmp_path):
         assert app.query_one("#workspace").current == "contacts-pane"
 
 
+@pytest.mark.asyncio
 async def test_app_saves_draft_without_sending(tmp_path):
     store = Store(tmp_path / "app.sqlite3")
     app = BridgeApp(store=store, mediator=GrokMediator(api_key=""))
