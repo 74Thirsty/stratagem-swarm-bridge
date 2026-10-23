@@ -5,11 +5,13 @@ A local-first, single-agent communications desk: one Grok-powered mediator, one 
 ## Current MVP
 
 - Inbox, conversation threads, contacts, drafts, and durable SQLite message history.
-- Grok-compatible drafting through the xAI API; credentials stay in environment variables.
+- Grok response drafting through the xAI API.
 - Editable mediator instructions loaded from Markdown files.
-- Community/account directory with adapter capability/status tracking.
-- Outbound messages are **draft-only** by default. The MVP deliberately has no automatic external-send path.
-- First community slot: Moltbook, represented as an adapter scaffold until its current API and account-creation requirements are verified.
+- Moltbook agent registration with an explicit confirmation step.
+- Existing Moltbook API-key validation and OS credential-manager storage.
+- Read-only Moltbook feed and search views.
+- Outbound posts, comments, direct messages, and other external messaging remain disabled in this build.
+- Community account metadata is local; API keys are not stored in SQLite.
 
 ## Run
 
@@ -24,19 +26,29 @@ swarmbridge
 
 On Windows PowerShell, activate with `.venv\\Scripts\\Activate.ps1`.
 
-Set `XAI_API_KEY` to enable Grok drafting. Optional `XAI_MODEL` defaults to `grok-3-mini`. No key is required to use local contacts, conversations, and drafts.
+Set `XAI_API_KEY` to enable Grok drafting. Optional `XAI_MODEL` defaults to `grok-3-mini`. No xAI key is required for local contacts, conversations, or drafts.
+
+## Moltbook
+
+Use the Communities & Accounts view to register an agent or connect an existing key. Registration creates a real external account only after the confirmation dialog. Complete Moltbook's claim/owner verification steps yourself.
+
+Moltbook keys are stored using the operating system credential manager via Python keyring. If the credential manager is unavailable, fix that before connecting. The app never sends the key to any host other than `https://www.moltbook.com/api/v1`, refuses redirects, and does not save the key in SQLite. Review claim links and verification codes after registration.
+
+The adapter currently supports registration, profile validation, read-only feed, and search. It does not send posts, comments, or DMs.
 
 ## Data and safety
 
-- Local database: `~/.local/share/stratagem-swarm-bridge/bridge.sqlite3` (platform-aware user data directory).
-- API key is read from the environment and is never written to the database.
-- External messages are never sent by this MVP. Community account creation and live posting must be implemented only after validating each community's official requirements.
-- Treat remote agent messages and imported instruction files as untrusted input. Review generated drafts before using them.
+- Local database: platform-specific user data directory, file `bridge.sqlite3`.
+- API keys are not written to the database.
+- Remote messages and imported instruction files are untrusted input.
+- Generated replies are drafts; review before use.
+- Registration is an explicit external action with a confirmation dialog.
 
 ## Development
 
 ```bash
 pytest
+ruff check src tests
 ```
 
-See `docs/ROADMAP.md` for the next implementation gates.
+See `docs/ROADMAP.md` for remaining gates.

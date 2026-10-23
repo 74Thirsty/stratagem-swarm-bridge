@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
 from textual.widgets import (
     Button, ContentSwitcher, Footer, Header, Input, Label, ListItem, ListView,
     Static, TextArea,
@@ -11,6 +12,7 @@ from textual.widgets import (
 
 from swarmbridge.communities import MoltbookAdapter
 from swarmbridge.mediator import GrokMediator, load_instructions
+from swarmbridge.moltbook import MoltbookClient, MoltbookError, load_api_key, save_api_key
 from swarmbridge.store import Store
 
 
@@ -32,7 +34,8 @@ Footer { background: #131c32; }
 #status { height: 2; color: #aab8d0; }
 #contact-list, #draft-list { height: 1fr; min-height: 5; }
 #instruction-editor { height: 1fr; }
-#community-notes { height: 6; }
+#community-notes { height: 5; }
+#community-output { height: 1fr; min-height: 5; border: round #263958; padding: 1; }
 Input { margin-bottom: 1; }
 Button { margin-right: 1; }
 .primary { background: #1b806f; color: white; }
@@ -40,7 +43,32 @@ Button { margin-right: 1; }
 ListView { background: #101a2e; }
 ListItem.--highlight { background: #21435a; }
 TextArea { background: #101a2e; border: round #304563; }
+ConfirmRegistration { align: center middle; }
+#confirm-box { width: 72; height: auto; max-height: 80%; border: thick #8fe8d1; background: #101a2e; padding: 2; }
+#confirm-buttons { height: 3; align-horizontal: center; }
 """
+
+
+class ConfirmRegistration(ModalScreen[bool]):
+    """Explicit confirmation before the app creates an external community account."""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-box"):
+            yield Label("CREATE A REAL MOLTBOOK AGENT?", classes="section-title")
+            yield Static(
+                "This sends the agent name and description to www.moltbook.com and may create "
+                "a real account. The returned API key will be saved in your operating system's "
+                "credential manager. Continue only if you want to register now."
+            )
+            with Horizontal(id="confirm-buttons"):
+                yield Button("Create account", id="confirm-register", classes="warning")
+                yield Button("Cancel", id="cancel-register")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-register":
+            self.dismiss(True)
+        elif event.button.id == "cancel-register":
+            self.dismiss(False)
 
 
 class BridgeApp(App):
@@ -110,14 +138,21 @@ class BridgeApp(App):
                         yield ListView(id="contact-list")
                     with Vertical(id="communities-pane"):
                         yield Label("COMMUNITY ACCOUNTS", classes="section-title")
-                        yield Static(
-                            "Adapters remain disconnected until their official API and account rules are verified."
-                        )
-                        yield Label("Moltbook • scaffold only", classes="section-title")
-                        yield Input(placeholder="Your account / handle (optional)", id="community-account")
-                        yield TextArea(id="community-notes", soft_wrap=True)
-                        yield Button("Save local account notes", id="save-community", classes="primary")
-                        yield Static("Connection status: NOT CONNECTED • no requests will be sent.", id="community-status")
+                        yield Static("Moltbook API calls use only the official www.moltbook.com host.")
+                        yield Label("CREATE AN AGENT ACCOUNT", classes="section-title")
+                        yield Input(placeholder="New Moltbook agent name", id="new-agent-name")
+                        yield Input(placeholder="What this agent does", id="new-agent-description")
+                        yield Button("Register new Moltbook agent…", id="register-agent", classes="warning")
+                        yield Label("CONNECT AN EXISTING ACCOUNT", classes="section-title")
+                        yield Input(placeholder="Moltbook API key (stored in OS credential manager)", id="moltbook-key", password=True)
+                        yield Button("Validate & connect existing account", id="connect-agent", classes="primary")
+                        yield Label("COMMUNITY ACTIVITY", classes="section-title")
+                        with Horizontal():
+                            yield Button("Load feed", id="load-feed")
+                            yield Input(placeholder="Search Moltbook", id="community-search")
+                            yield Button("Search", id="search-community")
+                        yield Static("Not connected. No community requests have been sent.", id="community-status")
+                        yield Static("", id="community-output", markup=False)
                     with Vertical(id="instructions-pane"):
                         yield Label("MEDIATOR INSTRUCTIONS", classes="section-title")
                         yield Static(
@@ -136,15 +171,19 @@ class BridgeApp(App):
     async def on_mount(self) -> None:
         await self.load_instruction_editor()
         await self.refresh_all()
+        try:
+            key = load_api_key()
+            if key:
+                self.query_one("#community-status", Static).update("Credential found. Use Load feed to connect.")
+        except Exception:
+            self.query_one("#community-status", Static).update(
+                "OS credential manager unavailable. Connect an account after fixing keyring support."
+            )
 
     async def refresh_all(self) -> None:
         await self.refresh_threads()
         await self.refresh_contacts()
         await self.refresh_drafts()
-        rows = self.store.communities()
-        if rows:
-            self.query_one("#community-account", Input).value = rows[0]["account_name"]
-            self.query_one("#community-notes", TextArea).text = rows[0]["notes"]
 
     async def refresh_threads(self) -> None:
         view = self.query_one("#thread-list", ListView)
@@ -226,20 +265,23 @@ class BridgeApp(App):
                 self.query_one(f"#{widget_id}", Input).value = ""
             await self.refresh_contacts()
             self.notify("Contact saved locally.")
-        elif action == "save-community":
-            self.store.set_community_account(
-                "Moltbook",
-                self.query_one("#community-account", Input).value,
-                self.query_one("#community-notes", TextArea).text,
-            )
-            self.notify("Account notes saved locally. Moltbook is still disconnected.")
+        elif action == "register-agent":
+            if not self.query_one("#new-agent-name", Input).value.strip() or not self.query_one("#new-agent-description", Input).value.strip():
+                self.notify("Enter both an agent name and description.", severity="warning")
+                return
+            self.push_screen(ConfirmRegistration(), self.finish_registration_confirmation)
+        elif action == "connect-agent":
+            await self.connect_existing_account()
+        elif action == "load-feed":
+            await self.load_community_feed()
+        elif action == "search-community":
+            await self.search_community()
         elif action == "save-instructions":
             content = self.query_one("#instruction-editor", TextArea).text
             self.instruction_path.write_text(content.rstrip() + "\n", encoding="utf-8")
             self.notify(f"Saved {self.instruction_path.resolve()}")
         elif action == "open-draft":
-            draft_id = self.selected_draft_id
-            draft = next((d for d in self.store.drafts() if d["id"] == draft_id), None)
+            draft = next((d for d in self.store.drafts() if d["id"] == self.selected_draft_id), None)
             if draft is None:
                 self.notify("Select a draft first.", severity="warning")
                 return
@@ -247,6 +289,109 @@ class BridgeApp(App):
             self.query_one("#compose", TextArea).text = draft["body"]
             self.query_one("#recipient", Input).value = draft["recipient"]
             self.notify("Draft loaded. It has not been sent.")
+
+    def finish_registration_confirmation(self, confirmed: bool | None) -> None:
+        if confirmed:
+            self.run_worker(self.register_agent(), exclusive=True)
+
+    async def register_agent(self) -> None:
+        name = self.query_one("#new-agent-name", Input).value.strip()
+        description = self.query_one("#new-agent-description", Input).value.strip()
+        output = self.query_one("#community-output", Static)
+        output.update("Registering with Moltbook…")
+        try:
+            registration = await MoltbookClient().register_agent(name, description)
+            try:
+                save_api_key(registration.api_key)
+                key_status = "API key saved to the operating system credential manager."
+                key_notice = ""
+            except Exception:
+                key_status = "OS credential manager failed. Copy this key now and store it securely; it was not saved."
+                key_notice = f"\nAPI KEY (shown once): {registration.api_key}"
+            self.store.set_community_account(
+                "Moltbook", registration.name,
+                f"Claim URL: {registration.claim_url}\nVerification code: {registration.verification_code}\n{key_status}"
+            )
+            output.update(
+                f"REGISTRATION RESPONSE\nAgent: {registration.name}\nClaim URL: {registration.claim_url}"
+                f"\nVerification code: {registration.verification_code}\n{key_status}{key_notice}"
+            )
+            self.query_one("#community-status", Static).update("Registration response received. Complete Moltbook's claim/owner verification.")
+            self.notify("Moltbook registration request completed. Review the claim instructions.")
+        except Exception as exc:
+            output.update(f"Registration failed: {exc}")
+            self.notify(str(exc), title="MOLTBOOK REGISTRATION FAILED", severity="error")
+
+    async def connect_existing_account(self) -> None:
+        api_key = self.query_one("#moltbook-key", Input).value.strip()
+        if not api_key:
+            self.notify("Paste an existing Moltbook API key first.", severity="warning")
+            return
+        try:
+            client = MoltbookClient(api_key)
+            response = await client.me()
+            data = response.get("data", response)
+            agent = data.get("agent", data) if isinstance(data, dict) else {}
+            name = str(agent.get("name", "Connected agent")) if isinstance(agent, dict) else "Connected agent"
+            save_api_key(api_key)
+            self.store.set_community_account("Moltbook", name, "API key validated and saved in OS credential manager.")
+            self.query_one("#moltbook-key", Input).value = ""
+            self.query_one("#community-status", Static).update(f"CONNECTED • {name} • key stored in OS credential manager")
+            self.notify(f"Connected Moltbook account: {name}")
+        except Exception as exc:
+            self.notify(str(exc), title="MOLTBOOK CONNECTION FAILED", severity="error")
+
+    async def load_community_feed(self) -> None:
+        output = self.query_one("#community-output", Static)
+        try:
+            key = load_api_key()
+            if not key:
+                raise MoltbookError("Connect an account or register an agent first.")
+            response = await MoltbookClient(key).feed()
+            data = response.get("data", response)
+            posts = data.get("posts", []) if isinstance(data, dict) else []
+            if not isinstance(posts, list):
+                posts = []
+            lines = []
+            for post in posts[:30]:
+                if not isinstance(post, dict):
+                    continue
+                author = post.get("author", {})
+                author_name = author.get("name", "unknown") if isinstance(author, dict) else "unknown"
+                lines.append(f"{post.get('title', '(untitled)')}\nby {author_name}\n{str(post.get('content', ''))[:220]}\n")
+            output.update("\n".join(lines) if lines else "Feed loaded; no posts were returned in the expected format.")
+            self.query_one("#community-status", Static).update(f"Feed request completed • {len(lines)} posts displayed • read-only")
+        except Exception as exc:
+            output.update(f"Feed unavailable: {exc}")
+            self.notify(str(exc), title="MOLTBOOK FEED FAILED", severity="error")
+
+    async def search_community(self) -> None:
+        query = self.query_one("#community-search", Input).value.strip()
+        output = self.query_one("#community-output", Static)
+        try:
+            key = load_api_key()
+            if not key:
+                raise MoltbookError("Connect an account or register an agent first.")
+            response = await MoltbookClient(key).search(query)
+            data = response.get("data", response)
+            results = data.get("results", data.get("posts", [])) if isinstance(data, dict) else []
+            if not isinstance(results, list):
+                results = []
+            lines = []
+            for item in results[:30]:
+                if not isinstance(item, dict):
+                    continue
+                title = item.get("title", item.get("name", "(result)"))
+                body = item.get("content", item.get("description", ""))
+                lines.append(f"{title}\n{str(body)[:220]}\n")
+            output.update("\n".join(lines) if lines else "Search completed; no results in the expected format.")
+            self.query_one("#community-status", Static).update(f"Search completed • {len(lines)} results displayed • read-only")
+        except Exception as exc:
+            output.update(f"Search unavailable: {exc}")
+            self.notify(str(exc), title="MOLTBOOK SEARCH FAILED", severity="error")
+
+    async def load_instruction_editor(self) -> None:
+        self.query_one("#instruction-editor", TextArea).text = load_instructions(self.instruction_path)
 
     def action_new_conversation(self) -> None:
         title = f"Conversation {len(self.store.conversations()) + 1}"
