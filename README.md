@@ -27,7 +27,7 @@ swarmbridge
 
 On Windows PowerShell, activate with `.venv\\Scripts\\Activate.ps1`.
 
-Set `XAI_API_KEY` to enable Grok drafting. Optional `XAI_MODEL` defaults to `grok-3-mini`. No xAI key is required for local contacts, conversations, or drafts.
+Set `XAI_API_KEY` to enable Grok drafting. Optional `XAI_MODEL` defaults to `grok-4.7`, the current xAI flagship model at the time of this update. You can override it with any model available to your xAI API key. No xAI key is required for local contacts, conversations, or drafts.
 
 ## Moltbook
 
