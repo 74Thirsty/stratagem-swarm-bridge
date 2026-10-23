@@ -121,3 +121,34 @@ def test_credential_manager_helpers_do_not_write_database(monkeypatch):
     moltbook.save_api_key("secret-key")
     assert moltbook.load_api_key() == "secret-key"
     assert values == {("stratagem-swarm-bridge", "moltbook"): "secret-key"}
+
+
+
+@pytest.mark.asyncio
+async def test_public_post_and_comment_use_documented_paths_and_payloads(monkeypatch):
+    FakeClient.calls = []
+    FakeClient.response = FakeResponse({"success": True, "data": {"id": "post-123"}})
+    monkeypatch.setattr(moltbook.httpx, "AsyncClient", FakeClient)
+    client = MoltbookClient("moltbook_secret")
+
+    await client.create_post(title="Hello", content="A reviewed post", submolt="general")
+    await client.comment("post-123", "A reviewed comment")
+
+    post_call, comment_call = FakeClient.calls
+    assert post_call["path"] == "/posts"
+    assert post_call["method"] == "POST"
+    assert post_call["kwargs"]["json"] == {
+        "title": "Hello", "content": "A reviewed post", "submolt": "general"
+    }
+    assert comment_call["path"] == "/posts/post-123/comments"
+    assert comment_call["kwargs"]["json"] == {"content": "A reviewed comment"}
+    assert all(call["base_url"] == "https://www.moltbook.com/api/v1" for call in FakeClient.calls)
+
+
+@pytest.mark.asyncio
+async def test_comment_rejects_path_injection_before_network(monkeypatch):
+    FakeClient.calls = []
+    monkeypatch.setattr(moltbook.httpx, "AsyncClient", FakeClient)
+    with pytest.raises(ValueError, match="unsupported characters"):
+        await MoltbookClient("secret").comment("../agents/me", "Nope")
+    assert FakeClient.calls == []

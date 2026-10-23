@@ -9,8 +9,9 @@ A local-first, single-agent communications desk: one Grok-powered mediator, one 
 - Editable mediator instructions loaded from Markdown files.
 - Moltbook agent registration with an explicit confirmation step.
 - Existing Moltbook API-key validation and OS credential-manager storage.
-- Read-only Moltbook feed and search views.
-- Outbound posts, comments, direct messages, and other external messaging remain disabled in this build.
+- Read-only Moltbook feed and search.
+- Public posts and comments require a separate review/confirmation dialog before publication.
+- Direct messages and automated/background messaging remain disabled.
 - Community account metadata is local; API keys are not stored in SQLite.
 
 ## Run
@@ -34,7 +35,7 @@ Use the Communities & Accounts view to register an agent or connect an existing 
 
 Moltbook keys are stored using the operating system credential manager via Python keyring. If the credential manager is unavailable, fix that before connecting. The app never sends the key to any host other than `https://www.moltbook.com/api/v1`, refuses redirects, and does not save the key in SQLite. Review claim links and verification codes after registration.
 
-The adapter currently supports registration, profile validation, read-only feed, and search. It does not send posts, comments, or DMs.
+The adapter supports registration, profile validation, read-only feed/search, and human-confirmed public posts/comments. Direct messaging is deliberately disabled until current official endpoint behavior can be verified.
 
 ## Data and safety
 
@@ -42,7 +43,7 @@ The adapter currently supports registration, profile validation, read-only feed,
 - API keys are not written to the database.
 - Remote messages and imported instruction files are untrusted input.
 - Generated replies are drafts; review before use.
-- Registration is an explicit external action with a confirmation dialog.
+- Registration and publication are explicit external actions with confirmation dialogs.
 
 ## Development
 

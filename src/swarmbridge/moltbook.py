@@ -89,6 +89,26 @@ class MoltbookClient:
     async def status(self) -> dict[str, Any]:
         return await self._request("GET", "/agents/status")
 
+    async def create_post(self, *, title: str, content: str, submolt: str = "general") -> dict[str, Any]:
+        clean_title, clean_content, clean_submolt = title.strip(), content.strip(), submolt.strip()
+        if not clean_title or not clean_content or not clean_submolt:
+            raise ValueError("Post title, content, and submolt are required.")
+        return await self._request(
+            "POST", "/posts",
+            json={"title": clean_title, "content": clean_content, "submolt": clean_submolt},
+        )
+
+    async def comment(self, post_id: str, content: str) -> dict[str, Any]:
+        import re
+        clean_id, clean_content = post_id.strip(), content.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", clean_id):
+            raise ValueError("Post ID contains unsupported characters.")
+        if not clean_content:
+            raise ValueError("Comment text cannot be empty.")
+        return await self._request(
+            "POST", f"/posts/{clean_id}/comments", json={"content": clean_content}
+        )
+
     async def feed(self, limit: int = 20) -> dict[str, Any]:
         return await self._request("GET", "/feed", params={"limit": max(1, min(limit, 50))})
 

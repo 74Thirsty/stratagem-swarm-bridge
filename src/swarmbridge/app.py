@@ -36,6 +36,7 @@ Footer { background: #131c32; }
 #instruction-editor { height: 1fr; }
 #community-notes { height: 5; }
 #community-output { height: 1fr; min-height: 5; border: round #263958; padding: 1; }
+#post-content, #comment-content { height: 5; }
 Input { margin-bottom: 1; }
 Button { margin-right: 1; }
 .primary { background: #1b806f; color: white; }
@@ -68,6 +69,31 @@ class ConfirmRegistration(ModalScreen[bool]):
         if event.button.id == "confirm-register":
             self.dismiss(True)
         elif event.button.id == "cancel-register":
+            self.dismiss(False)
+
+
+class ConfirmExternalAction(ModalScreen[bool]):
+    """Explicit review gate for a public post or comment."""
+
+    def __init__(self, title: str, details: str, action_label: str) -> None:
+        super().__init__()
+        self.confirm_title = title
+        self.details = details
+        self.action_label = action_label
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-box"):
+            yield Label(self.confirm_title, classes="section-title")
+            yield Static(self.details, markup=False)
+            yield Static("This will publish externally under your Moltbook agent identity.")
+            with Horizontal(id="confirm-buttons"):
+                yield Button(self.action_label, id="confirm-external", classes="warning")
+                yield Button("Cancel", id="cancel-external")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "confirm-external":
+            self.dismiss(True)
+        elif event.button.id == "cancel-external":
             self.dismiss(False)
 
 
@@ -136,7 +162,7 @@ class BridgeApp(App):
                         yield Input(placeholder="Notes (optional)", id="contact-notes")
                         yield Button("＋  Save contact", id="add-contact", classes="primary")
                         yield ListView(id="contact-list")
-                    with Vertical(id="communities-pane"):
+                    with VerticalScroll(id="communities-pane"):
                         yield Label("COMMUNITY ACCOUNTS", classes="section-title")
                         yield Static("Moltbook API calls use only the official www.moltbook.com host.")
                         yield Label("CREATE AN AGENT ACCOUNT", classes="section-title")
@@ -151,6 +177,15 @@ class BridgeApp(App):
                             yield Button("Load feed", id="load-feed")
                             yield Input(placeholder="Search Moltbook", id="community-search")
                             yield Button("Search", id="search-community")
+                        yield Label("PUBLISH A PUBLIC POST", classes="section-title")
+                        yield Input(placeholder="Post title", id="post-title")
+                        yield Input(placeholder="Submolt (default: general)", id="post-submolt")
+                        yield TextArea(id="post-content", soft_wrap=True)
+                        yield Button("Review & publish post…", id="review-post", classes="warning")
+                        yield Label("COMMENT ON A POST", classes="section-title")
+                        yield Input(placeholder="Moltbook post ID", id="comment-post-id")
+                        yield TextArea(id="comment-content", soft_wrap=True)
+                        yield Button("Review & publish comment…", id="review-comment", classes="warning")
                         yield Static("Not connected. No community requests have been sent.", id="community-status")
                         yield Static("", id="community-output", markup=False)
                     with Vertical(id="instructions-pane"):
@@ -276,6 +311,31 @@ class BridgeApp(App):
             await self.load_community_feed()
         elif action == "search-community":
             await self.search_community()
+        elif action == "review-post":
+            title = self.query_one("#post-title", Input).value.strip()
+            submolt = self.query_one("#post-submolt", Input).value.strip() or "general"
+            body = self.query_one("#post-content", TextArea).text.strip()
+            if not title or not body:
+                self.notify("A public post needs both a title and content.", severity="warning")
+                return
+            self.pending_external_action = {"kind": "post", "title": title, "submolt": submolt, "content": body}
+            self.push_screen(
+                ConfirmExternalAction("PUBLISH THIS PUBLIC POST?", f"Submolt: {submolt}\nTitle: {title}\n\n{body[:700]}",
+                                      "Publish post"),
+                self.finish_external_confirmation,
+            )
+        elif action == "review-comment":
+            post_id = self.query_one("#comment-post-id", Input).value.strip()
+            body = self.query_one("#comment-content", TextArea).text.strip()
+            if not post_id or not body:
+                self.notify("A comment needs a post ID and comment text.", severity="warning")
+                return
+            self.pending_external_action = {"kind": "comment", "post_id": post_id, "content": body}
+            self.push_screen(
+                ConfirmExternalAction("PUBLISH THIS COMMENT?", f"Post ID: {post_id}\n\n{body[:700]}",
+                                      "Publish comment"),
+                self.finish_external_confirmation,
+            )
         elif action == "save-instructions":
             content = self.query_one("#instruction-editor", TextArea).text
             self.instruction_path.write_text(content.rstrip() + "\n", encoding="utf-8")
@@ -340,6 +400,38 @@ class BridgeApp(App):
             self.notify(f"Connected Moltbook account: {name}")
         except Exception as exc:
             self.notify(str(exc), title="MOLTBOOK CONNECTION FAILED", severity="error")
+
+    def finish_external_confirmation(self, confirmed: bool | None) -> None:
+        pending = getattr(self, "pending_external_action", None)
+        self.pending_external_action = None
+        if confirmed and pending:
+            self.run_worker(self.perform_external_action(pending), exclusive=True)
+
+    async def perform_external_action(self, action: dict) -> None:
+        output = self.query_one("#community-output", Static)
+        try:
+            key = load_api_key()
+            if not key:
+                raise MoltbookError("Connect an account or register an agent first.")
+            client = MoltbookClient(key)
+            if action["kind"] == "post":
+                response = await client.create_post(
+                    title=action["title"], content=action["content"], submolt=action["submolt"]
+                )
+                self.query_one("#post-title", Input).value = ""
+                self.query_one("#post-content", TextArea).text = ""
+                result = response.get("data", response)
+                output.update(f"Post published after confirmation.\n{result}")
+            else:
+                response = await client.comment(action["post_id"], action["content"])
+                self.query_one("#comment-content", TextArea).text = ""
+                result = response.get("data", response)
+                output.update(f"Comment published after confirmation.\n{result}")
+            self.query_one("#community-status", Static).update("External action completed • API success response received")
+            self.notify("Moltbook confirmed the publication.")
+        except Exception as exc:
+            output.update(f"Publication failed: {exc}")
+            self.notify(str(exc), title="MOLTBOOK PUBLICATION FAILED", severity="error")
 
     async def load_community_feed(self) -> None:
         output = self.query_one("#community-output", Static)
