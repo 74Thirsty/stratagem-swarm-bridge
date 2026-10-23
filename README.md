@@ -5,7 +5,7 @@ A local-first, single-agent communications desk: one Grok-powered mediator, one 
 ## Current MVP
 
 - Inbox, conversation threads, contacts, drafts, and durable SQLite message history.
-- Grok response drafting through the xAI API.
+- Grok response drafting through xAI's recommended Responses API; requests set `store: false` so the API does not retain response history for retrieval.
 - Editable mediator instructions loaded from Markdown files.
 - Moltbook agent registration with an explicit confirmation step.
 - Existing Moltbook API-key validation and OS credential-manager storage.
