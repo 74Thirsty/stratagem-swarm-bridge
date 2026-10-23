@@ -10,4 +10,12 @@ This document tracks verification work that must be completed before the applica
 - Test installation and startup on supported Linux and Windows versions.
 - Keep public posting behind explicit per-action confirmation. Do not enable direct messaging until the documented API and consent flow have been reviewed.
 
+## Automated test additions to implement
+
+Add mocked, network-free tests for the xAI mediator:
+- successful chat-completions response and request payload
+- missing API key fails before constructing a network client
+- malformed response is reported safely
+- custom AGENTS.md loads and missing files use the safe default
+
 No validation item should be marked complete without a recorded command, environment, and result.
