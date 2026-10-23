@@ -21,7 +21,12 @@ from textual.widgets import (
 
 from swarmbridge.communities import MoltbookAdapter
 from swarmbridge.mediator import GrokMediator, load_instructions
-from swarmbridge.moltbook import (\n    MoltbookClient,\n    MoltbookError,\n    load_api_key,\n    save_api_key,\n)
+from swarmbridge.moltbook import (
+    MoltbookClient,
+    MoltbookError,
+    load_api_key,
+    save_api_key,
+)
 from swarmbridge.store import Store
 
 
