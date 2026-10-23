@@ -26,7 +26,7 @@ def load_instructions(path: str | Path | None = None) -> str:
 class GrokMediator:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.api_key = api_key or os.getenv("XAI_API_KEY", "")
-        self.model = model or os.getenv("XAI_MODEL", "grok-3-mini")
+        self.model = model or os.getenv("XAI_MODEL", "grok-4.7")
 
     @property
     def configured(self) -> bool:
