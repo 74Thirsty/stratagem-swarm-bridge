@@ -62,7 +62,7 @@ async def test_grok_draft_uses_configured_model_and_returns_reviewable_text(monk
             captured["status_checked"] = True
 
         def json(self):
-            return {"choices": [{"message": {"content": "A reviewed draft."}}]}
+            return {"output_text": "A reviewed draft."}
 
     class FakeClient:
         def __init__(self, *, timeout):
@@ -85,11 +85,12 @@ async def test_grok_draft_uses_configured_model_and_returns_reviewable_text(monk
 
     assert result == "A reviewed draft."
     assert captured["status_checked"] is True
-    assert captured["url"] == "https://api.x.ai/v1/chat/completions"
+    assert captured["url"] == "https://api.x.ai/v1/responses"
     assert captured["headers"]["Authorization"] == "Bearer test-key"
     assert captured["json"]["model"] == "test-model"
-    assert captured["json"]["messages"][0]["content"] == "Be concise."
-    assert "Prior message" in captured["json"]["messages"][1]["content"]
+    assert captured["json"]["store"] is False
+    assert captured["json"]["input"][0]["content"] == "Be concise."
+    assert "Prior message" in captured["json"]["input"][1]["content"]
 
 
 @pytest.mark.asyncio
@@ -109,7 +110,7 @@ async def test_grok_malformed_response_fails_closed(monkeypatch):
             pass
 
         def json(self):
-            return {"choices": []}
+            return {"output": []}
 
     class FakeClient:
         def __init__(self, *, timeout):
